@@ -1,0 +1,55 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: taskmanager-chau-lab
+  region: eu-central-1
+  version: "1.30"
+  tags:
+    Owner: chau_tv
+    Email: vanchautran11ece@gmail.com
+    Project: taskmanager
+
+# Reuse the VPC we already created (avoids CloudFormation creating a new VPC
+# which would be blocked by the trainee-tag-enforcement policy)
+vpc:
+  id: vpc-000b72e43322e55b5
+  subnets:
+    public:
+      eu-central-1a:
+        id: subnet-039519e64a6b21d9e
+      eu-central-1b:
+        id: subnet-00da9444962cea6b6
+    private:
+      eu-central-1a:
+        id: subnet-05a5876cb43d8060b
+      eu-central-1b:
+        id: subnet-0b05ade4e0a14d18d
+  nat:
+    gateway: Disable   # saves ~$30/mo — nodes in public subnets need no NAT
+
+managedNodeGroups:
+  - name: ng-spot
+    instanceTypes:
+      - t3.medium
+    spot: true                 # ~70% cheaper than on-demand for ephemeral lab
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 3   # allows manual scale-up or Cluster Autoscaler to add a 3rd node
+    privateNetworking: false   # public subnet — no NAT needed for ECR pull
+    iam:
+      attachPolicyARNs:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy  # EBS CSI driver needs this to create PVCs
+
+# Inline policy added post-creation — s3:PutObject on s3-proops-infras-2026/chau_tv/*
+# Add via: aws iam put-role-policy --role-name <NodeInstanceRole> --policy-name taskmanager-s3-backup
+# See eks/iam/s3-backup-policy.json for the policy document
+
+addons:
+  - name: aws-ebs-csi-driver   # required for PVC provisioning (Helm Redis persistence)
+
+iam:
+  withOIDC: false   # skip IRSA setup — node IAM role is enough for today

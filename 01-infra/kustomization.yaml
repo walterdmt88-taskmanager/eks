@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Layer 01 — Cluster infrastructure
+#
+# What lives here: cluster-scoped resources that must exist before any
+# namespaced workloads are created.
+#
+# What is NOT here (managed by Helm in deploy.sh):
+#   - ingress-nginx controller  →  helm upgrade --install ingress-nginx ...
+#   - metrics-server            →  kubectl apply -f (official manifest, idempotent)
+#
+# Apply order enforced by deploy.sh:
+#   helm install ingress-nginx → kubectl apply -k 01-infra → kubectl apply -k 02-data → …
+#
+# StorageClass must precede StatefulSets (02-data) because the PVC templates in
+# db-user-statefulset.yaml and db-task-statefulset.yaml reference storageClassName: gp2-retain.
+
+resources:
+  - storageclass.yaml
+  - cluster-autoscaler.yaml

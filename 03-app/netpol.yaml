@@ -1,0 +1,130 @@
+# NetworkPolicies for Task Manager
+# Rule: services only accept traffic from their legitimate caller.
+# Default deny is implied by having any NetworkPolicy with policyTypes: [Ingress].
+
+# ── 1. user-service: only api-gateway may call it ────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-service-allow-gateway
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: user-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+# ── 2. task-service: only api-gateway may call it ────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: task-service-allow-gateway
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: task-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 3002
+---
+# ── 3. db-user: only user-service may connect ────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-user-allow-user-service
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: db-user
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: user-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# ── 4. db-task: only task-service may connect ────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-task-allow-task-service
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: db-task
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: task-service
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# ── 5. db-user + db-task: postgres-backup CronJob may connect to both ────────
+# The backup pod needs pg_dump access to both databases every 6 hours.
+# Without this rule the NetworkPolicies above would silently drop its connections.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-user-allow-backup
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: db-user
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgres-backup
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-task-allow-backup
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: db-task
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: postgres-backup
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migration-sql-users
+  namespace: default
+data:
+  # Mounted at /sql/001_create_users.sql inside the migrate init container of user-service.
+  # The init container checks whether the 'users' table already exists before running
+  # this file — so it is safe to re-run on every pod restart (idempotent).
+  001_create_users.sql: |
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+    CREATE TABLE IF NOT EXISTS users (
+      id            UUID          DEFAULT gen_random_uuid() PRIMARY KEY,
+      email         VARCHAR(255)  NOT NULL UNIQUE,
+      password_hash VARCHAR(255)  NOT NULL,
+      full_name     VARCHAR(100)  NOT NULL,
+      role          VARCHAR(20)   NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'lead')),
+      created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: migration-sql-tasks
+  namespace: default
+data:
+  # Mounted at /sql/001_create_tables.sql inside the migrate init container of task-service.
+  # The init container checks whether the 'tasks' table already exists before running
+  # this file — so it is safe to re-run on every pod restart (idempotent).
+  # The DO $$ block makes task_status creation idempotent (CREATE TYPE has no IF NOT EXISTS).
+  001_create_tables.sql: |
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+    DO $$ BEGIN
+      CREATE TYPE task_status AS ENUM ('TODO', 'IN_PROGRESS', 'DONE', 'CANCELLED');
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END $$;
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+      title        VARCHAR(255) NOT NULL,
+      description  TEXT,
+      status       task_status  NOT NULL DEFAULT 'TODO',
+      assignee_id  UUID,
+      created_by   UUID         NOT NULL,
+      due_date     TIMESTAMP,
+      created_at   TIMESTAMP    NOT NULL DEFAULT now(),
+      updated_at   TIMESTAMP    NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+
+    CREATE TABLE IF NOT EXISTS comments (
+      id         UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id    UUID      NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      author_id  UUID      NOT NULL,
+      body       TEXT      NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);

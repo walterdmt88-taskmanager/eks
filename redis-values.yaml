@@ -1,0 +1,26 @@
+# Helm values override for bitnami/redis — EKS edition
+# Installed by deploy.sh:
+#   helm upgrade --install my-redis bitnami/redis -f eks/redis-values.yaml
+#
+# Release name:    my-redis
+# Master Service:  my-redis-master:6379
+# Referenced by:   api-gw-cm REDIS_URL = redis://my-redis-master:6379
+
+architecture: standalone   # single master, no replicas — cost-optimised lab cluster
+
+auth:
+  enabled: false           # internal cluster traffic only; no public exposure
+
+master:
+  persistence:
+    enabled: true
+    storageClass: gp2      # standard EBS gp2 — provisioned by the EBS CSI driver
+    size: 8Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

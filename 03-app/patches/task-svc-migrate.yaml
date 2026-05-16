@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-service
+  namespace: default
+spec:
+  template:
+    spec:
+      # Strategic-merge patch: kustomize ADDS this initContainer to the existing list.
+      # The migrate container runs BEFORE task-service starts on every pod creation.
+      # It is safe to re-run because it checks for the 'tasks' table before applying SQL.
+      #
+      # NetworkPolicy note: this init container connects to db-task:5432.
+      # netpol.yaml allows ingress to db-task from pods labelled app=task-service.
+      # Init containers share the pod's labels, so no extra NetworkPolicy rule is needed.
+      initContainers:
+        - name: migrate
+          image: postgres:15-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "=== migrate: tasks DB ==="
+              until pg_isready -h db-task -p 5432 -U app_user -d tasks_db; do
+                echo "  waiting for db-task..."; sleep 3
+              done
+              APPLIED=$(psql "${DATABASE_URL}" -tAc \
+                "SELECT COUNT(*) FROM information_schema.tables
+                 WHERE table_schema='public' AND table_name='tasks'" \
+                2>/dev/null | tr -d '[:space:]' || echo "0")
+              if [ "${APPLIED}" = "1" ]; then
+                echo "  schema already applied, skipping."
+              else
+                echo "  applying 001_create_tables.sql ..."
+                psql "${DATABASE_URL}" -f /sql/001_create_tables.sql
+                echo "  done."
+              fi
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: task-svc-secret
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: migration-sql
+              mountPath: /sql
+              readOnly: true
+      volumes:
+        - name: migration-sql
+          configMap:
+            name: migration-sql-tasks

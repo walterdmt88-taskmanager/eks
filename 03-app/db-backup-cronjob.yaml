@@ -1,0 +1,75 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: default
+spec:
+  schedule: "0 */6 * * *"        # every 6 hours
+  concurrencyPolicy: Forbid       # don't overlap if previous backup still running
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: postgres-backup   # matched by NetworkPolicy db-user-allow-backup + db-task-allow-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-backup
+              image: postgres:15-alpine
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-user-secret
+                      key: POSTGRES_PASSWORD
+                - name: DB_TASK_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-task-secret
+                      key: POSTGRES_PASSWORD
+                - name: S3_BUCKET
+                  value: "s3-proops-infras-2026"
+                - name: S3_PREFIX
+                  value: "chau_tv/backups"
+                - name: AWS_DEFAULT_REGION
+                  value: "eu-central-1"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  DATE=$(date +%Y%m%d-%H%M%S)
+
+                  echo "=== Postgres Backup — $DATE ==="
+
+                  # Install AWS CLI into the postgres alpine image
+                  apk add --no-cache aws-cli --quiet
+
+                  echo "[1/4] Dumping users_db..."
+                  PGPASSWORD=$PGPASSWORD pg_dump \
+                    -h db-user -U app_user -d users_db \
+                    -Fc -Z 9 \
+                    -f /tmp/users_db_${DATE}.dump
+                  echo "      Size: $(du -sh /tmp/users_db_${DATE}.dump | cut -f1)"
+
+                  echo "[2/4] Dumping tasks_db..."
+                  PGPASSWORD=$DB_TASK_PASSWORD pg_dump \
+                    -h db-task -U app_user -d tasks_db \
+                    -Fc -Z 9 \
+                    -f /tmp/tasks_db_${DATE}.dump
+                  echo "      Size: $(du -sh /tmp/tasks_db_${DATE}.dump | cut -f1)"
+
+                  echo "[3/4] Uploading to S3..."
+                  aws s3 cp /tmp/users_db_${DATE}.dump \
+                    s3://${S3_BUCKET}/${S3_PREFIX}/users_db/${DATE}.dump
+                  aws s3 cp /tmp/tasks_db_${DATE}.dump \
+                    s3://${S3_BUCKET}/${S3_PREFIX}/tasks_db/${DATE}.dump
+
+                  echo "[4/4] Verifying uploads..."
+                  aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/ --recursive \
+                    | grep "$DATE"
+
+                  echo "=== Backup complete ==="

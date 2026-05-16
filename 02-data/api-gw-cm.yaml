@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gw-cm
+  namespace: default
+data:
+  PORT: "8080"
+  USER_SERVICE_URL: "http://user-service:3001"   # K8s DNS — matches user-service Service metadata.name
+  TASK_SERVICE_URL: "http://task-service:3002"   # K8s DNS — matches task-service Service metadata.name
+  CORS_ORIGIN: "http://localhost:3000"
+  REDIS_URL: "redis://my-redis-master:6379"      # Helm release: my-redis → Service: my-redis-master

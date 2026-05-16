@@ -1,0 +1,132 @@
+---
+# ── ServiceAccount ────────────────────────────────────────────────────────────
+# The Deployment runs as this SA. The ClusterRoleBinding below grants it the
+# permissions it needs to watch nodes, read ASG tags, and evict pods.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+
+---
+# ── ClusterRole ───────────────────────────────────────────────────────────────
+# Cluster-scoped permissions (no namespace). The CA needs read access to nodes,
+# pods, PVCs, and scaling sub-resources across the whole cluster so it can
+# decide which node group to expand and which idle nodes to drain.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-autoscaler
+  labels:
+    app: cluster-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["events", "endpoints", "pods/eviction", "services", "persistentvolumeclaims", "persistentvolumes"]
+    verbs: ["create", "patch", "watch", "list", "get"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["watch", "list", "get", "update"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["replicationcontrollers/scale"]
+    verbs: ["get", "update"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "replicasets/scale", "statefulsets/scale", "deployments/scale", "daemonsets/scale", "daemonsets"]
+    verbs: ["watch", "list", "get", "update"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["watch", "list"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets"]
+    verbs: ["watch", "list", "get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "update", "create", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list", "get"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csidrivers", "csinodes", "storageclasses"]
+    verbs: ["watch", "list", "get"]
+
+---
+# ── ClusterRoleBinding ────────────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-autoscaler
+  labels:
+    app: cluster-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: cluster-autoscaler
+    namespace: kube-system
+
+---
+# ── Deployment ────────────────────────────────────────────────────────────────
+# Runs in kube-system — cluster platform, not application namespace.
+# Key flags:
+#   --node-group-auto-discovery: finds the ng-spot ASG by its cluster tag
+#   --expander=least-waste:      picks the node type that wastes least CPU/RAM
+#   --balance-similar-node-groups: keeps AZ distribution even across AZs
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8085"
+    spec:
+      serviceAccountName: cluster-autoscaler
+      containers:
+        - name: cluster-autoscaler
+          image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.30.3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 300Mi
+            limits:
+              cpu: 100m
+              memory: 300Mi
+          command:
+            - ./cluster-autoscaler
+            - --v=2
+            - --stderrthreshold=info
+            - --cloud-provider=aws
+            - --skip-nodes-with-local-storage=false
+            - --expander=least-waste
+            # Tag must match the cluster name used in eksctl create cluster -f eks/cluster.yaml
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/taskmanager-chau-lab
+            - --balance-similar-node-groups
+            - --skip-nodes-with-system-pods=false
+          env:
+            - name: AWS_REGION
+              value: eu-central-1
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              readOnly: true
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: /etc/ssl/certs/ca-certificates.crt

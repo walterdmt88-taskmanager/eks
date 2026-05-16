@@ -1,0 +1,57 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Layer 03 — Application layer
+#
+# What lives here: all app workloads, networking, and autoscaling.
+# Applied after Layer 02 + kubectl wait for db-user-0 and db-task-0 Ready.
+#
+# Migration strategy (Kubernetes-native, no kubectl exec required):
+#   user-service and task-service each receive a 'migrate' init container via
+#   strategic-merge patches in patches/. The init container:
+#     1. pg_isready loops until the DB accepts connections
+#     2. checks whether the target table already exists (idempotent guard)
+#     3. runs the SQL file from the mounted migration-sql ConfigMap if needed
+#   Init containers share the pod's labels (app=user-service / app=task-service),
+#   so existing NetworkPolicies already permit the DB connection — no extra rules needed.
+#
+# Redis (Helm) and metrics-server are managed by deploy.sh after this layer:
+#   helm upgrade --install my-redis bitnami/redis -f eks/redis-values.yaml
+#   kubectl apply -f https://…/metrics-server/…/components.yaml  (idempotent)
+
+namespace: default
+
+resources:
+  # Migration SQL ConfigMaps — mounted by init containers in the patches below
+  - migration-sql.yaml
+
+  # App Deployments (+ ClusterIP Services defined in the same files)
+  - user-svc-deployment.yaml
+  - task-svc-deployment.yaml
+  - api-gw-deployment.yaml
+  - frontend-deployment.yaml
+
+  # Ingress routing rules (2 objects: API rewrite + frontend passthrough)
+  - ingress.yaml
+
+  # NetworkPolicies — restrict inter-service traffic to declared paths only
+  - netpol.yaml
+
+  # Horizontal Pod Autoscalers — require metrics-server (applied by deploy.sh after this layer)
+  - hpa.yaml
+
+  # Scheduled PostgreSQL backup to S3 (every 6h)
+  - db-backup-cronjob.yaml
+
+patches:
+  # Inject migration init container into user-service Deployment
+  - path: patches/user-svc-migrate.yaml
+    target:
+      kind: Deployment
+      name: user-service
+
+  # Inject migration init container into task-service Deployment
+  - path: patches/task-svc-migrate.yaml
+    target:
+      kind: Deployment
+      name: task-service

@@ -1,0 +1,11 @@
+.DS_Store
+*.tmp
+*.log
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+*.pem
+*.key
+.env
+02-data/secrets.yaml

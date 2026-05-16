@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway       # K8s DNS: api-gateway:8080 — Ingress backend
+  namespace: default
+spec:
+  type: ClusterIP      # Ingress controller handles external traffic — no direct ELB needed
+  selector:
+    app: api-gateway
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: api-gateway
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: api-gateway
+          image: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-api-gateway:v2
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: api-gw-cm         # PORT, USER_SERVICE_URL, TASK_SERVICE_URL, CORS_ORIGIN
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-gw-secret
+                  key: JWT_SECRET
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5

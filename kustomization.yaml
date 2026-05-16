@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Top-level Kustomization — composes all 3 deployment layers.
+#
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  DEPLOYMENT: use eks/deploy.sh, NOT kubectl apply -k eks/                  │
+# │                                                                             │
+# │  deploy.sh applies layers in order with kubectl wait gates between them    │
+# │  and manages Helm charts (ingress-nginx, Redis, metrics-server) that        │
+# │  kustomize cannot sequence or install.                                      │
+# │                                                                             │
+# │  bash eks/deploy.sh                                                         │
+# └─────────────────────────────────────────────────────────────────────────────┘
+#
+# This file is useful for:
+#   kubectl diff    -k eks/          — see all pending changes across all layers
+#   kubectl kustomize eks/           — render and inspect the full manifest set
+#
+# Layer map:
+#   01-infra/   StorageClass (gp2-retain)
+#   02-data/    Secrets + ConfigMaps + PostgreSQL StatefulSets
+#   03-app/     Deployments (with migration init-container patches)
+#               + Ingress + HPA + NetworkPolicies + CronJob
+
+namespace: default
+
+resources:
+  - 01-infra/
+  - 02-data/
+  - 03-app/

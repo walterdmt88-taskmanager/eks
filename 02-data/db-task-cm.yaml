@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-task-cm
+  namespace: default
+data:
+  POSTGRES_DB: "tasks_db"
+  POSTGRES_USER: "app_user"

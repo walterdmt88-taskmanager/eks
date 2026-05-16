@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Layer 02 — Data layer
+#
+# What lives here: Secrets, ConfigMaps, and PostgreSQL StatefulSets.
+#
+# Apply order within this layer (Kubernetes processes resources in declaration order):
+#   1. secrets.yaml          — DB passwords + DATABASE_URL + JWT_SECRET
+#   2. *-cm.yaml             — POSTGRES_DB / POSTGRES_USER / app env vars
+#   3. db-*-statefulset.yaml — PostgreSQL pods (reference secrets + configmaps above)
+#
+# After deploy.sh applies this layer it runs two wait gates before Layer 03:
+#   kubectl wait pod/db-user-0 --for=condition=Ready --timeout=180s
+#   kubectl wait pod/db-task-0 --for=condition=Ready --timeout=180s
+#
+# Those gates ensure the DB is accepting connections before user-service and
+# task-service pods start. The migrate init containers also loop on pg_isready
+# as a second safety net, so ordering is robust even without the wait gates.
+
+namespace: default
+
+resources:
+  # Secrets first — StatefulSets reference them via secretKeyRef
+  - secrets.yaml
+
+  # ConfigMaps — DB init env vars + app env vars
+  - db-user-cm.yaml
+  - db-task-cm.yaml
+  - api-gw-cm.yaml
+  - user-svc-cm.yaml
+  - task-svc-cm.yaml
+
+  # PostgreSQL StatefulSets (+ headless Services) — depend on secrets + configmaps above
+  - db-user-statefulset.yaml
+  - db-task-statefulset.yaml
