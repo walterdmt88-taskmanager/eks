@@ -102,7 +102,7 @@ echo "[10/11] Add comment"
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/tasks/$TASK_ID/comments" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"body":"regression comment"}')
+  -d '{"text":"regression comment"}')
 check_status "POST /api/tasks/:id/comments" "201" "$STATUS"
 
 # 11. Frontend returns 200

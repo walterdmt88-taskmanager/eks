@@ -30,6 +30,7 @@ resources:
   - task-svc-deployment.yaml
   - api-gw-deployment.yaml
   - frontend-deployment.yaml
+  - notification-deployment.yaml
 
   # Ingress routing rules (2 objects: API rewrite + frontend passthrough)
   - ingress.yaml

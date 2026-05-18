@@ -48,6 +48,11 @@ spec:
                 secretKeyRef:
                   name: task-svc-secret
                   key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: task-svc-secret
+                  key: REDIS_URL
           resources:
             requests:
               cpu: 100m

@@ -37,7 +37,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: api-gateway
-          image: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-api-gateway:v2
+          image: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-api-gateway:v1
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           envFrom:

@@ -30,6 +30,7 @@ resources:
   - api-gw-cm.yaml
   - user-svc-cm.yaml
   - task-svc-cm.yaml
+  - notification-cm.yaml
 
   # PostgreSQL StatefulSets (+ headless Services) — depend on secrets + configmaps above
   - db-user-statefulset.yaml

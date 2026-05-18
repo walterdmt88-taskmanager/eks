@@ -37,6 +37,7 @@ spec:
       containers:
         - name: user-service
           image: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-user-service:v1
+          imagePullPolicy: Always
           ports:
             - containerPort: 3001
           envFrom:

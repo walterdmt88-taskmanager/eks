@@ -36,7 +36,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: frontend-service
-          image: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-frontend:v2
+          image: 905418181527.dkr.ecr.eu-central-1.amazonaws.com/taskmanager-frontend-service:v1
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           # No env vars — VITE_API_BASE_URL=/api baked at build; nginx proxies /api/ → api-gateway

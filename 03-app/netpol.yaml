@@ -109,6 +109,33 @@ spec:
         - protocol: TCP
           port: 5432
 ---
+# ── 6. notification-service: only notification-service may connect to Redis ───
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-allow-notification
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: my-redis        # Helm release my-redis → pod label app=my-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: notification-service
+        - podSelector:
+            matchLabels:
+              app: task-service        # task-service publishes events to Redis
+        - podSelector:
+            matchLabels:
+              app: api-gateway         # api-gateway uses Redis for rate-limiting
+      ports:
+        - protocol: TCP
+          port: 6379
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
