@@ -1,0 +1,21 @@
+# ServiceMonitor for ingress-nginx — scrapes Prometheus metrics exposed by the controller.
+# Gives RED signals: nginx_ingress_controller_requests (rate, errors) +
+# nginx_ingress_controller_request_duration_seconds (latency).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ingress-nginx
+  namespace: monitoring
+  labels:
+    release: monitoring           # matches kube-prometheus-stack Helm release label
+spec:
+  namespaceSelector:
+    matchNames:
+      - ingress-nginx
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
