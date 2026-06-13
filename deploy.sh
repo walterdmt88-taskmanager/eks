@@ -25,15 +25,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NS="${NAMESPACE:-default}"
 
 # ── Helm: ingress-nginx controller ────────────────────────────────────────────
-# Must be running before Layer 03 Ingress objects are applied.
+# Managed by Terraform (module.cluster_bootstrap) — skip if already installed.
 echo "=== [helm] ingress-nginx controller ==="
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>/dev/null || true
-helm repo update ingress-nginx
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace \
-  --set controller.service.type=LoadBalancer \
-  --version 4.10.1 \
-  --wait --timeout=5m
+if helm status ingress-nginx -n ingress-nginx &>/dev/null; then
+  echo "  ingress-nginx already managed by Terraform, skipping."
+else
+  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>/dev/null || true
+  helm repo update ingress-nginx
+  helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+    --namespace ingress-nginx --create-namespace \
+    --set controller.service.type=LoadBalancer \
+    --version 4.10.1 \
+    --wait --timeout=5m
+fi
 
 kubectl wait --namespace ingress-nginx \
   --for=condition=ready pod \
@@ -48,22 +52,25 @@ kubectl apply -k "${SCRIPT_DIR}/01-infra/"
 echo "=== [kustomize] Layer 02: data layer ==="
 kubectl apply -k "${SCRIPT_DIR}/02-data/"
 
-# Wait gates: DB pods must be Ready so the migrate init containers in Layer 03 can
-# connect immediately — no retry-looping in init containers at pod start time.
-kubectl wait pod/db-user-0 --namespace="${NS}" --for=condition=Ready --timeout=180s
-kubectl wait pod/db-task-0 --namespace="${NS}" --for=condition=Ready --timeout=180s
+# Wait gates removed — G-18 Phase 6: StatefulSets decommissioned, app uses RDS.
+# RDS is always available; no pod-level wait gate needed.
 
 # ── Layer 03: app (Deployments + Ingress + HPA + NetworkPolicies + CronJob) ───
 echo "=== [kustomize] Layer 03: app layer ==="
 kubectl apply -k "${SCRIPT_DIR}/03-app/"
 
 # ── Helm: Redis ────────────────────────────────────────────────────────────────
+# Managed by Terraform (module.cluster_bootstrap) — skip if already installed.
+# If installing manually: Bitnami HTTP repo deprecated; use OCI registry directly.
 echo "=== [helm] Redis ==="
-helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
-helm repo update bitnami
-helm upgrade --install my-redis bitnami/redis \
-  -f "${SCRIPT_DIR}/redis-values.yaml" \
-  --namespace="${NS}" --wait --timeout=5m
+if helm status my-redis -n "${NS}" &>/dev/null; then
+  echo "  my-redis already managed by Terraform, skipping."
+else
+  helm upgrade --install my-redis \
+    oci://registry-1.docker.io/bitnamicharts/redis \
+    -f "${SCRIPT_DIR}/redis-values.yaml" \
+    --namespace="${NS}" --wait --timeout=5m
+fi
 
 # ── metrics-server (required by HPA) ──────────────────────────────────────────
 # EKS 1.24+ may pre-install metrics-server; skip if deployment already exists.
