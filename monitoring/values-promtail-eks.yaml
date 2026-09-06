@@ -1,0 +1,19 @@
+# Promtail Helm values for EKS + Grafana Cloud Loki.
+# Credentials injected via K8s Secret grafana-cloud-loki.
+
+config:
+  clients:
+    - url: https://logs-prod-020.grafana.net/loki/api/v1/push
+      basic_auth:
+        username_file: /etc/promtail/secrets/username
+        password_file: /etc/promtail/secrets/password
+
+extraVolumes:
+  - name: grafana-loki-secret
+    secret:
+      secretName: grafana-cloud-loki
+
+extraVolumeMounts:
+  - name: grafana-loki-secret
+    mountPath: /etc/promtail/secrets
+    readOnly: true

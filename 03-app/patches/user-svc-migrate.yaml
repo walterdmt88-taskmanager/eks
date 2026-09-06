@@ -20,8 +20,9 @@ spec:
           args:
             - |
               echo "=== migrate: users DB ==="
-              until pg_isready -h db-user -p 5432 -U app_user -d users_db; do
-                echo "  waiting for db-user..."; sleep 3
+              DB_HOST=$(echo "${DATABASE_URL}" | sed 's|.*@\([^:]*\):.*|\1|')
+              until pg_isready -h "${DB_HOST}" -p 5432 -U app_user; do
+                echo "  waiting for DB..."; sleep 3
               done
               APPLIED=$(psql "${DATABASE_URL}" -tAc \
                 "SELECT COUNT(*) FROM information_schema.tables

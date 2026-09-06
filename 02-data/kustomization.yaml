@@ -32,6 +32,6 @@ resources:
   - task-svc-cm.yaml
   - notification-cm.yaml
 
-  # PostgreSQL StatefulSets (+ headless Services) — depend on secrets + configmaps above
-  - db-user-statefulset.yaml
-  - db-task-statefulset.yaml
+  # PostgreSQL StatefulSets removed — G-18 Phase 6: app services now use RDS
+  # - db-user-statefulset.yaml
+  # - db-task-statefulset.yaml

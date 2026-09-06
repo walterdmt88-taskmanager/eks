@@ -3,18 +3,22 @@ kind: Ingress
 metadata:
   name: taskmanager-ingress-api
   namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    # rewrite-target ONLY applies to this ingress — strips /api prefix before forwarding
-    # /api/users → /users, /api/tasks → /tasks
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  # No rewrite-target — gateway mounts all routes under /api internally.
+  # Stripping the prefix here broke auth middleware and left /health unrouted.
 spec:
   ingressClassName: nginx
   rules:
     - http:
         paths:
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          - path: /health
+            pathType: Exact
             backend:
               service:
                 name: api-gateway

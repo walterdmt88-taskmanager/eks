@@ -1,0 +1,38 @@
+# kube-prometheus-stack Helm values for EKS + Grafana Cloud remote_write.
+# Credentials injected via K8s Secrets — never inline here.
+# Differences from k3s (values-prom.yaml):
+#   - prometheusSpec.retention reduced to 1h (ship everything to Grafana Cloud)
+#   - serviceMonitorSelectorNilUsesHelmValues: false (pick up ALL ServiceMonitors)
+#   - grafana.enabled: false (use Grafana Cloud UI)
+#   - alertmanager.enabled: false (Day 32)
+
+grafana:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: 1h
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+    remoteWrite:
+      - url: https://prometheus-prod-37-prod-ap-southeast-1.grafana.net/api/prom/push
+        basicAuth:
+          username:
+            name: grafana-cloud-prom
+            key: username
+          password:
+            name: grafana-cloud-prom
+            key: password
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: true
+
+kube-state-metrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
