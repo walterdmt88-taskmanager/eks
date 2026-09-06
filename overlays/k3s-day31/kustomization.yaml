@@ -1,0 +1,201 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# k3s-day31 overlay — NOT part of the real EKS deploy path (that's eks/deploy.sh).
+# Purpose: run just user-service + its Postgres on the single-node k3s box
+# provisioned for PROOPS2026 Day 31 observability work.
+#
+# Deliberately scoped to ONE service, not the full eks/ stack:
+#   - eks/deploy.sh's 03-app images point at ECR account 905418181527, which this
+#     project's actual AWS account (102301143105) has no access to — see
+#     practice-repo/memory/status.md "Blocked" section for the full writeup.
+#   - Even with that fixed, 5 services + 2 Postgres StatefulSets + Redis +
+#     ingress-nginx is sized for EKS/minikube, not a 1 GiB t3.micro.
+#   - user-service is the one service Walter owns, already has a real working
+#     GHCR-based CI/CD pipeline (see status.md), and is exactly what Day 31 needs:
+#     one instrumented service to build a RED dashboard against.
+#
+# Composed from the full 02-data + 03-app layers (like local-dev does), with
+# everything except db-user + user-service deleted below. Excludes 01-infra
+# entirely (gp2-retain StorageClass is AWS-only; k3s ships its own "local-path"
+# StorageClass via the local-path-provisioner pod already running in kube-system).
+#
+# Usage:
+#   KUBECONFIG=~/.kube/config-day31 kubectl apply -k eks/overlays/k3s-day31/
+
+namespace: default
+
+resources:
+  - ../../02-data
+  - ../../03-app
+
+patches:
+  # ── Delete everything except db-user + user-service — this box only has ~1GiB RAM ──
+  - target:
+      kind: Service
+      name: db-task
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db-task
+      $patch: delete
+  - target:
+      kind: StatefulSet
+      name: db-task
+    patch: |-
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: db-task
+      $patch: delete
+  - target:
+      kind: Service
+      name: task-service
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: task-service
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: task-service
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: task-service
+      $patch: delete
+  - target:
+      kind: Service
+      name: api-gateway
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: api-gateway
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: api-gateway
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api-gateway
+      $patch: delete
+  - target:
+      kind: Service
+      name: frontend-service
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend-service
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: frontend-service
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend-service
+      $patch: delete
+  - target:
+      kind: Service
+      name: notification-service
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: notification-service
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: notification-service
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: notification-service
+      $patch: delete
+  - target:
+      kind: Ingress
+      name: taskmanager-ingress-api
+    patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: taskmanager-ingress-api
+      $patch: delete
+  - target:
+      kind: Ingress
+      name: taskmanager-ingress-frontend
+    patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: taskmanager-ingress-frontend
+      $patch: delete
+  - target:
+      kind: NetworkPolicy
+    patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: placeholder
+      $patch: delete
+    options:
+      allowNameChange: true
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: placeholder
+      $patch: delete
+    options:
+      allowNameChange: true
+  - target:
+      kind: CronJob
+      name: postgres-backup
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: postgres-backup
+      $patch: delete
+
+  # ── k3s adjustments for what's left (db-user + user-service) ──
+
+  # k3s has no EBS CSI driver — use its built-in local-path StorageClass instead of gp2-retain
+  - target:
+      kind: StatefulSet
+      name: db-user
+    patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: local-path
+
+  # Real registry (unlike local-dev's "load into node" trick) — pull over the network via GHCR,
+  # authenticated with the imagePullSecret created before this overlay is applied.
+  - target:
+      kind: Deployment
+      name: user-service
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/proops2026-taskmanager/user-service:fb7331db3020a3bd4b6f86b01bcce23c933962d7
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: ghcr-pull-secret
+      # 2 replicas x (128-256Mi) is real RAM pressure on a 1 GiB t3.micro already
+      # running k3s + Postgres + the observability stack going in next (Q4) — 1 is
+      # enough to prove the RED dashboard works; HA isn't the point of this exercise.
+      - op: replace
+        path: /spec/replicas
+        value: 1
