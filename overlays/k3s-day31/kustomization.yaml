@@ -188,7 +188,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/image
-        value: ghcr.io/proops2026-taskmanager/user-service:fb7331db3020a3bd4b6f86b01bcce23c933962d7
+        value: ghcr.io/walterdmt88-taskmanager/user-service:fdb09cc792d77982db67bfd27060b9450a2469f9
       - op: add
         path: /spec/template/spec/imagePullSecrets
         value:
